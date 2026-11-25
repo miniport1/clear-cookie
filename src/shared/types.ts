@@ -45,6 +45,7 @@ export interface ExtensionSettings {
   theme: ThemeMode;
   defaultExportFormat: ExportFormat;
   maskValuesByDefault: boolean;
+  showAdvancedByDefault: boolean;
   fontSize: number;
 }
 

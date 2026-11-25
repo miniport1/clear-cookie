@@ -2,6 +2,7 @@ export type IconName =
   | 'cookie'
   | 'search'
   | 'plus'
+  | 'minus'
   | 'upload'
   | 'download'
   | 'trash'
@@ -18,7 +19,10 @@ export type IconName =
   | 'check'
   | 'file'
   | 'type'
-  | 'minus';
+  | 'more-vertical'
+  | 'save'
+  | 'arrow-left'
+  | 'external-link';
 
 const SVG_NS = 'http://www.w3.org/2000/svg';
 
@@ -33,6 +37,7 @@ const ICON_PATHS: Record<IconName, string[]> = {
   ],
   search: ['M11 19a8 8 0 1 0 0-16 8 8 0 0 0 0 16Z', 'M21 21l-4.35-4.35'],
   plus: ['M12 5v14', 'M5 12h14'],
+  minus: ['M5 12h14'],
   upload: ['M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4', 'M17 8l-5-5-5 5', 'M12 3v12'],
   download: ['M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4', 'M7 10l5 5 5-5', 'M12 15V3'],
   trash: [
@@ -71,7 +76,22 @@ const ICON_PATHS: Record<IconName, string[]> = {
     'M14 2v6h6',
   ],
   type: ['M4 7V4h16v3', 'M9 20h6', 'M12 4v16'],
-  minus: ['M5 12h14'],
+  'more-vertical': [
+    'M12 5h.01',
+    'M12 12h.01',
+    'M12 19h.01',
+  ],
+  save: [
+    'M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2Z',
+    'M17 21v-8H7v8',
+    'M7 3v5h8',
+  ],
+  'arrow-left': ['M19 12H5', 'M12 19l-7-7 7-7'],
+  'external-link': [
+    'M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6',
+    'M15 3h6v6',
+    'M10 14L21 3',
+  ],
 };
 
 export function createIcon(name: IconName, className = 'icon'): SVGSVGElement {
@@ -79,7 +99,7 @@ export function createIcon(name: IconName, className = 'icon'): SVGSVGElement {
   svg.setAttribute('viewBox', '0 0 24 24');
   svg.setAttribute('fill', 'none');
   svg.setAttribute('stroke', 'currentColor');
-  svg.setAttribute('stroke-width', '2');
+  svg.setAttribute('stroke-width', name === 'more-vertical' ? '2.8' : '2');
   svg.setAttribute('stroke-linecap', 'round');
   svg.setAttribute('stroke-linejoin', 'round');
   svg.setAttribute('aria-hidden', 'true');

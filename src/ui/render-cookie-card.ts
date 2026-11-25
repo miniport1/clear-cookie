@@ -3,19 +3,29 @@ import type { CookieDraft, CookieItem, SameSiteStatus } from '../shared/types';
 import { copyText, dateTimeLocalToEpoch, el, epochToDateTimeLocal } from './dom';
 import { createIcon } from './icons';
 
-export interface CookieCardCallbacks {
+export interface CookieRowOptions {
+  expanded: boolean;
+  masked: boolean;
+  showAdvancedDefault: boolean;
+  justSaved: boolean;
+}
+
+export interface CookieRowCallbacks {
   onToggleExpand: () => void;
   onSave: (draft: CookieDraft, previous: CookieItem) => Promise<void>;
   onDelete: (cookie: CookieItem) => Promise<void>;
   onToast: (message: string, isError?: boolean) => void;
 }
 
-function renderInspector(value: string, onToast: (msg: string, err?: boolean) => void): HTMLElement | null {
+function renderInspector(
+  value: string,
+  onToast: (msg: string, err?: boolean) => void,
+): HTMLElement | null {
   const inspected = inspectCookieValue(value);
   if (!inspected) return null;
 
   const box = el('div', 'inspector-box');
-  const header = el('div', 'inspector-header');
+  const head = el('div', 'inspector-head');
   const meta = el('div', 'inspector-meta');
   meta.appendChild(createIcon('code', 'icon-sm'));
 
@@ -43,20 +53,20 @@ function renderInspector(value: string, onToast: (msg: string, err?: boolean) =>
     copyPayload = inspected.decoded;
   }
 
-  const copyBtn = el('button', 'btn btn-sm', '复制解码内容');
+  const copyBtn = el('button', 'inline-link-btn', '复制解码');
   copyBtn.type = 'button';
   copyBtn.addEventListener('click', async () => {
     const ok = await copyText(copyPayload);
     onToast(ok ? '已复制解码内容' : '复制失败', !ok);
   });
 
-  header.append(meta, copyBtn);
-  box.appendChild(header);
+  head.append(meta, copyBtn);
+  box.appendChild(head);
 
   if (inspected.kind === 'jwt') {
-    box.appendChild(el('div', 'inspector-section-label', 'Payload'));
+    box.appendChild(el('div', 'inspector-sublabel', 'Payload'));
     box.appendChild(el('pre', 'inspector-pre', inspected.payload));
-    box.appendChild(el('div', 'inspector-section-label', 'Header'));
+    box.appendChild(el('div', 'inspector-sublabel', 'Header'));
     box.appendChild(el('pre', 'inspector-pre', inspected.header));
   } else if (inspected.kind === 'json') {
     box.appendChild(el('pre', 'inspector-pre', inspected.pretty));
@@ -67,91 +77,90 @@ function renderInspector(value: string, onToast: (msg: string, err?: boolean) =>
   return box;
 }
 
-export function renderCookieCard(
+export function renderCookieRow(
   cookie: CookieItem,
-  expanded: boolean,
-  masked: boolean,
-  callbacks: CookieCardCallbacks,
-): HTMLElement {
-  const card = el('article', expanded ? 'cookie-card expanded' : 'cookie-card');
+  opts: CookieRowOptions,
+  callbacks: CookieRowCallbacks,
+): HTMLLIElement {
+  const classes = ['cookie-item'];
+  if (opts.expanded) classes.push('expanded');
+  if (opts.justSaved) classes.push('anim-saved');
+  const li = el('li', classes.join(' '));
 
-  // Summary Header
-  const summary = el('div', 'cookie-summary');
-  summary.setAttribute('role', 'button');
-  summary.setAttribute('tabindex', '0');
-  summary.setAttribute('aria-expanded', String(expanded));
+  // Single-line compact Cookie-Editor header row
+  const row = el('div', 'cookie-row');
+  row.setAttribute('role', 'button');
+  row.setAttribute('tabindex', '0');
+  row.setAttribute('aria-expanded', String(opts.expanded));
 
-  const chevron = el('span', 'cookie-chevron');
-  chevron.appendChild(createIcon('chevron-down', 'icon-sm'));
+  const arrow = el('span', 'cookie-arrow');
+  arrow.appendChild(createIcon('chevron-down', 'icon-sm'));
 
-  const main = el('div', 'cookie-main');
-  const topLine = el('div', 'cookie-top-line');
-  const nameNode = el('span', 'cookie-name', cookie.name);
-  nameNode.title = cookie.name;
+  const nameSpan = el('span', 'cookie-row-name', cookie.name);
+  nameSpan.title = cookie.name;
 
-  const quickActions = el('div', 'cookie-quick-actions');
+  const extraText = opts.masked ? cookie.domain : cookie.domain;
+  const extraSpan = el('span', 'cookie-row-extra', extraText);
+  extraSpan.title = `${cookie.domain}${cookie.path}`;
 
-  const copyBtn = el('button', 'icon-btn');
-  copyBtn.type = 'button';
-  copyBtn.title = '复制值';
-  copyBtn.setAttribute('aria-label', '复制值');
-  copyBtn.appendChild(createIcon('copy', 'icon-sm'));
-  copyBtn.addEventListener('click', async (e) => {
+  // Hover quick buttons (Copy + Delete)
+  const hoverBtns = el('div', 'cookie-row-hover-btns');
+
+  const copyQuickBtn = el('button', 'row-mini-btn');
+  copyQuickBtn.type = 'button';
+  copyQuickBtn.title = '复制值';
+  copyQuickBtn.setAttribute('aria-label', '复制值');
+  copyQuickBtn.appendChild(createIcon('copy', 'icon-sm'));
+  copyQuickBtn.addEventListener('click', async (e) => {
     e.stopPropagation();
     const ok = await copyText(cookie.value);
     callbacks.onToast(ok ? `已复制 ${cookie.name}` : '复制失败', !ok);
   });
 
-  const delBtn = el('button', 'icon-btn danger');
-  delBtn.type = 'button';
-  delBtn.title = '删除';
-  delBtn.setAttribute('aria-label', '删除');
-  delBtn.appendChild(createIcon('trash', 'icon-sm'));
-  delBtn.addEventListener('click', async (e) => {
+  const delQuickBtn = el('button', 'row-mini-btn danger');
+  delQuickBtn.type = 'button';
+  delQuickBtn.title = '删除';
+  delQuickBtn.setAttribute('aria-label', '删除');
+  delQuickBtn.appendChild(createIcon('trash', 'icon-sm'));
+  delQuickBtn.addEventListener('click', async (e) => {
     e.stopPropagation();
     await callbacks.onDelete(cookie);
   });
 
-  quickActions.append(copyBtn, delBtn);
-  topLine.append(nameNode, quickActions);
+  hoverBtns.append(copyQuickBtn, delQuickBtn);
+  row.append(arrow, nameSpan, extraSpan, hoverBtns);
 
-  const valPreview = el(
-    'div',
-    masked ? 'cookie-value-preview masked' : 'cookie-value-preview',
-    masked ? '••••••••••••' : cookie.value || '(空值)',
-  );
-  if (!masked) valPreview.title = cookie.value;
-
-  const summaryMetaRow = el('div', 'cookie-meta-row');
-  const domainLabel = cookie.path && cookie.path !== '/' ? `${cookie.domain}${cookie.path}` : cookie.domain;
-  const domainTag = el('span', 'cookie-domain-tag', domainLabel);
-  domainTag.title = `${cookie.domain}${cookie.path}`;
-  summaryMetaRow.appendChild(domainTag);
-
-  if (cookie.httpOnly) summaryMetaRow.appendChild(el('span', 'badge badge-blue', 'HttpOnly'));
-  if (cookie.secure) summaryMetaRow.appendChild(el('span', 'badge badge-green', 'Secure'));
-  if (cookie.partitionKey?.topLevelSite) {
-    summaryMetaRow.appendChild(el('span', 'badge badge-purple', 'Partitioned'));
-  }
-  if (cookie.session) summaryMetaRow.appendChild(el('span', 'badge', 'Session'));
-
-  main.append(topLine, valPreview, summaryMetaRow);
-  summary.append(chevron, main);
-
-  summary.addEventListener('click', callbacks.onToggleExpand);
-  summary.addEventListener('keydown', (e) => {
+  row.addEventListener('click', callbacks.onToggleExpand);
+  row.addEventListener('keydown', (e) => {
     if (e.key === 'Enter' || e.key === ' ') {
       e.preventDefault();
       callbacks.onToggleExpand();
     }
   });
 
-  card.appendChild(summary);
+  li.appendChild(row);
 
-  if (!expanded) return card;
+  if (!opts.expanded) return li;
 
-  // Expanded Inline Editor
-  const form = el('form', 'cookie-editor');
+  // Cookie-Editor signature expando: left vertical action rail + right form
+  const expando = el('div', 'cookie-expando');
+
+  const sideActions = el('div', 'expando-side-actions');
+  const sideDeleteBtn = el('button', 'expando-action-btn delete');
+  sideDeleteBtn.type = 'button';
+  sideDeleteBtn.title = '删除';
+  sideDeleteBtn.setAttribute('aria-label', '删除');
+  sideDeleteBtn.appendChild(createIcon('trash'));
+
+  const sideSaveBtn = el('button', 'expando-action-btn save');
+  sideSaveBtn.type = 'button';
+  sideSaveBtn.title = '保存';
+  sideSaveBtn.setAttribute('aria-label', '保存');
+  sideSaveBtn.appendChild(createIcon('save'));
+
+  sideActions.append(sideDeleteBtn, sideSaveBtn);
+
+  const form = el('form', 'expando-form');
 
   // Name
   const nameField = el('div', 'field');
@@ -163,7 +172,7 @@ export function renderCookieCard(
   nameField.appendChild(nameInput);
 
   // Value
-  let localReveal = !masked;
+  let localReveal = !opts.masked;
   const valueField = el('div', 'field');
   const valueLabelRow = el('div', 'field-label');
   valueLabelRow.appendChild(el('span', undefined, 'Value'));
@@ -181,8 +190,8 @@ export function renderCookieCard(
     if (node) inspectorHost.appendChild(node);
   };
 
-  if (masked) {
-    const revealBtn = el('button', 'btn btn-sm', '显示值');
+  if (opts.masked) {
+    const revealBtn = el('button', 'inline-link-btn', '显示值');
     revealBtn.type = 'button';
     valueInput.disabled = true;
     valueInput.value = '••••••••••••';
@@ -191,7 +200,7 @@ export function renderCookieCard(
       if (localReveal) {
         valueInput.disabled = false;
         valueInput.value = cookie.value;
-        revealBtn.textContent = '遮罩值';
+        revealBtn.textContent = '遮罩';
       } else {
         valueInput.disabled = true;
         valueInput.value = '••••••••••••';
@@ -206,8 +215,26 @@ export function renderCookieCard(
   valueField.append(valueLabelRow, valueInput);
   refreshInspector();
 
+  // Collapsible Advanced Fields (Cookie-Editor style)
+  let advancedVisible = opts.showAdvancedDefault;
+  const advToggleBtn = el(
+    'button',
+    'advanced-toggle-btn',
+    advancedVisible ? '隐藏高级选项' : '显示高级选项',
+  );
+  advToggleBtn.type = 'button';
+
+  const advSection = el('div', 'advanced-section');
+  advSection.hidden = !advancedVisible;
+
+  advToggleBtn.addEventListener('click', () => {
+    advancedVisible = !advancedVisible;
+    advSection.hidden = !advancedVisible;
+    advToggleBtn.textContent = advancedVisible ? '隐藏高级选项' : '显示高级选项';
+  });
+
   // Domain & Path
-  const domainPathRow = el('div', 'grid-2');
+  const domainPathGrid = el('div', 'form-grid-2');
 
   const domainField = el('div', 'field');
   domainField.appendChild(el('label', 'field-label', 'Domain'));
@@ -223,27 +250,10 @@ export function renderCookieCard(
   pathInput.value = cookie.path;
   pathField.appendChild(pathInput);
 
-  domainPathRow.append(domainField, pathField);
+  domainPathGrid.append(domainField, pathField);
 
-  // SameSite & Expiration
-  const metaRow = el('div', 'grid-2');
-
-  const sameSiteField = el('div', 'field');
-  sameSiteField.appendChild(el('label', 'field-label', 'SameSite'));
-  const sameSiteSelect = el('select', 'select');
-  const sameSiteOptions: Array<{ value: SameSiteStatus; label: string }> = [
-    { value: 'unspecified', label: 'Unspecified' },
-    { value: 'lax', label: 'Lax' },
-    { value: 'strict', label: 'Strict' },
-    { value: 'no_restriction', label: 'None (no_restriction)' },
-  ];
-  for (const opt of sameSiteOptions) {
-    const optionEl = el('option', undefined, opt.label);
-    optionEl.value = opt.value;
-    if (opt.value === cookie.sameSite) optionEl.selected = true;
-    sameSiteSelect.appendChild(optionEl);
-  }
-  sameSiteField.appendChild(sameSiteSelect);
+  // Expiration & SameSite
+  const metaGrid = el('div', 'form-grid-2');
 
   const expField = el('div', 'field');
   expField.appendChild(el('label', 'field-label', '过期时间'));
@@ -253,13 +263,28 @@ export function renderCookieCard(
   expInput.disabled = cookie.session;
   expField.appendChild(expInput);
 
-  metaRow.append(sameSiteField, expField);
+  const sameSiteField = el('div', 'field');
+  sameSiteField.appendChild(el('label', 'field-label', 'SameSite'));
+  const sameSiteSelect = el('select', 'select');
+  for (const [val, label] of [
+    ['unspecified', 'Unspecified'],
+    ['lax', 'Lax'],
+    ['strict', 'Strict'],
+    ['no_restriction', 'None'],
+  ] as const) {
+    const o = el('option', undefined, label);
+    o.value = val;
+    if (val === cookie.sameSite) o.selected = true;
+    sameSiteSelect.appendChild(o);
+  }
+  sameSiteField.appendChild(sameSiteSelect);
 
-  // Flags
-  const flagsRow = el('div', 'checkbox-row');
+  metaGrid.append(expField, sameSiteField);
 
+  // Checkboxes
+  const checkboxList = el('div', 'checkbox-list');
   const makeCheck = (label: string, checked: boolean) => {
-    const wrap = el('label', 'checkbox-label');
+    const wrap = el('label', 'checkbox-item');
     const cb = el('input');
     cb.type = 'checkbox';
     cb.checked = checked;
@@ -269,8 +294,8 @@ export function renderCookieCard(
 
   const hostOnlyCtl = makeCheck('HostOnly', cookie.hostOnly);
   const sessionCtl = makeCheck('Session', cookie.session);
-  const httpOnlyCtl = makeCheck('HttpOnly', cookie.httpOnly);
   const secureCtl = makeCheck('Secure', cookie.secure);
+  const httpOnlyCtl = makeCheck('HttpOnly', cookie.httpOnly);
 
   sessionCtl.cb.addEventListener('change', () => {
     expInput.disabled = sessionCtl.cb.checked;
@@ -286,39 +311,21 @@ export function renderCookieCard(
     }
   });
 
-  flagsRow.append(hostOnlyCtl.wrap, sessionCtl.wrap, httpOnlyCtl.wrap, secureCtl.wrap);
+  checkboxList.append(hostOnlyCtl.wrap, sessionCtl.wrap, secureCtl.wrap, httpOnlyCtl.wrap);
+  advSection.append(domainPathGrid, metaGrid, checkboxList);
 
-  // PartitionKey info (read-only if present)
-  let partitionNode: HTMLElement | null = null;
   if (cookie.partitionKey?.topLevelSite) {
-    partitionNode = el(
-      'div',
-      'partition-info',
-      `PartitionKey: ${cookie.partitionKey.topLevelSite}`,
+    advSection.appendChild(
+      el('div', 'partition-line', `PartitionKey: ${cookie.partitionKey.topLevelSite}`),
     );
   }
 
-  // Error line
   const errorBox = el('div', 'inline-error');
   errorBox.hidden = true;
 
-  // Footer
-  const footer = el('div', 'editor-footer');
-  const deleteActionBtn = el('button', 'btn btn-danger', '删除');
-  deleteActionBtn.type = 'button';
-  deleteActionBtn.addEventListener('click', async () => {
-    await callbacks.onDelete(cookie);
-  });
-
-  const saveBtn = el('button', 'btn btn-primary', '保存');
-  saveBtn.type = 'submit';
-
-  footer.append(deleteActionBtn, saveBtn);
-
-  form.addEventListener('submit', async (e) => {
-    e.preventDefault();
+  const submitSave = async () => {
     errorBox.hidden = true;
-    saveBtn.disabled = true;
+    sideSaveBtn.disabled = true;
 
     const actualValue = localReveal ? valueInput.value : cookie.value;
     const isSession = sessionCtl.cb.checked;
@@ -343,14 +350,19 @@ export function renderCookieCard(
     } catch (err) {
       errorBox.textContent = err instanceof Error ? err.message : '保存失败';
       errorBox.hidden = false;
-      saveBtn.disabled = false;
+      sideSaveBtn.disabled = false;
     }
+  };
+
+  sideSaveBtn.addEventListener('click', () => void submitSave());
+  sideDeleteBtn.addEventListener('click', () => void callbacks.onDelete(cookie));
+  form.addEventListener('submit', (e) => {
+    e.preventDefault();
+    void submitSave();
   });
 
-  form.append(nameField, valueField, inspectorHost, domainPathRow, metaRow, flagsRow);
-  if (partitionNode) form.appendChild(partitionNode);
-  form.append(errorBox, footer);
-
-  card.appendChild(form);
-  return card;
+  form.append(nameField, valueField, inspectorHost, advToggleBtn, advSection, errorBox);
+  expando.append(sideActions, form);
+  li.appendChild(expando);
+  return li;
 }

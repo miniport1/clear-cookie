@@ -16,6 +16,19 @@ import type { ExportFormat, ThemeMode } from '../shared/types';
 import { el } from './dom';
 import { createIcon } from './icons';
 
+function createSwitch(checked: boolean, onChange: (val: boolean) => void): {
+  wrap: HTMLLabelElement;
+  input: HTMLInputElement;
+} {
+  const wrap = el('label', 'switch');
+  const input = el('input');
+  input.type = 'checkbox';
+  input.checked = checked;
+  input.addEventListener('change', () => onChange(input.checked));
+  wrap.append(input, el('span', 'switch-slider'));
+  return { wrap, input };
+}
+
 export async function mountOptionsApp(root: HTMLElement): Promise<void> {
   document.body.className = 'surface-options';
 
@@ -27,15 +40,15 @@ export async function mountOptionsApp(root: HTMLElement): Promise<void> {
 
   // Header
   const header = el('header', 'options-header');
-  const mark = el('div', 'brand-mark');
-  mark.appendChild(createIcon('cookie'));
-  header.append(mark, el('h1', 'options-title', 'ClearCookie 设置'));
+  const logo = el('div', 'options-logo');
+  logo.appendChild(createIcon('cookie'));
+  header.append(logo, el('h1', 'options-title', 'ClearCookie 设置'));
 
-  // 1. General Settings Section
+  // 1. General Settings
   const generalSection = el('section', 'options-section');
   generalSection.appendChild(el('div', 'options-section-head', '通用'));
 
-  // Theme Row
+  // Theme
   const themeRow = el('div', 'options-row');
   const themeLeft = el('div');
   themeLeft.appendChild(el('div', 'options-row-label', '外观主题'));
@@ -57,7 +70,7 @@ export async function mountOptionsApp(root: HTMLElement): Promise<void> {
   });
   themeRow.append(themeLeft, themeSelect);
 
-  // Font Size Row
+  // Font Size
   const fontRow = el('div', 'options-row');
   const fontLeft = el('div');
   fontLeft.append(
@@ -66,17 +79,17 @@ export async function mountOptionsApp(root: HTMLElement): Promise<void> {
   );
 
   const fontControl = el('div', 'options-font-control');
-  const fontStepper = el('div', 'font-stepper');
+  const fontStepper = el('div', 'menu-font-stepper');
 
-  const minusBtn = el('button', 'icon-btn');
+  const minusBtn = el('button', 'stepper-btn');
   minusBtn.type = 'button';
   minusBtn.title = '缩小字号';
   minusBtn.setAttribute('aria-label', '缩小字号');
   minusBtn.appendChild(createIcon('minus', 'icon-sm'));
 
-  const fontValueEl = el('span', 'font-value', `${settings.fontSize}px`);
+  const fontValueEl = el('span', 'stepper-val', `${settings.fontSize}px`);
 
-  const plusBtn = el('button', 'icon-btn');
+  const plusBtn = el('button', 'stepper-btn');
   plusBtn.type = 'button';
   plusBtn.title = '增大字号';
   plusBtn.setAttribute('aria-label', '增大字号');
@@ -84,7 +97,7 @@ export async function mountOptionsApp(root: HTMLElement): Promise<void> {
 
   fontStepper.append(minusBtn, fontValueEl, plusBtn);
 
-  const presetWrap = el('div', 'font-presets');
+  const presetWrap = el('div', 'format-pills');
   const presetItems = [
     { size: 12, label: '紧凑' },
     { size: 14, label: '标准' },
@@ -114,7 +127,7 @@ export async function mountOptionsApp(root: HTMLElement): Promise<void> {
   plusBtn.addEventListener('click', () => void updateFontSize(settings.fontSize + 1));
 
   for (const p of presetItems) {
-    const btn = el('button', 'filter-chip', p.label);
+    const btn = el('button', 'filter-pill', p.label);
     btn.type = 'button';
     btn.addEventListener('click', () => void updateFontSize(p.size));
     presetBtns.push({ size: p.size, btn });
@@ -125,7 +138,33 @@ export async function mountOptionsApp(root: HTMLElement): Promise<void> {
   fontControl.append(fontStepper, presetWrap);
   fontRow.append(fontLeft, fontControl);
 
-  // Default Export Format Row
+  // Show Advanced By Default
+  const advRow = el('div', 'options-row');
+  const advLeft = el('div');
+  advLeft.append(
+    el('div', 'options-row-label', '默认展开高级选项'),
+    el('div', 'options-row-sub', '展开单条 Cookie 时直接显示 Domain、Path、SameSite 和标记位'),
+  );
+  const advSwitch = createSwitch(settings.showAdvancedByDefault, async (val) => {
+    settings = { ...settings, showAdvancedByDefault: val };
+    await saveSettings(settings);
+  });
+  advRow.append(advLeft, advSwitch.wrap);
+
+  // Default Mask Values
+  const maskRow = el('div', 'options-row');
+  const maskLeft = el('div');
+  maskLeft.append(
+    el('div', 'options-row-label', '打开时默认遮罩敏感值'),
+    el('div', 'options-row-sub', '防止录屏或截图时意外暴露登录凭证'),
+  );
+  const maskSwitch = createSwitch(settings.maskValuesByDefault, async (val) => {
+    settings = { ...settings, maskValuesByDefault: val };
+    await saveSettings(settings);
+  });
+  maskRow.append(maskLeft, maskSwitch.wrap);
+
+  // Default Export Format
   const exportRow = el('div', 'options-row');
   const exportLeft = el('div');
   exportLeft.appendChild(el('div', 'options-row-label', '默认导出格式'));
@@ -146,25 +185,7 @@ export async function mountOptionsApp(root: HTMLElement): Promise<void> {
   });
   exportRow.append(exportLeft, exportSelect);
 
-  // Default Mask Row
-  const maskRow = el('div', 'options-row');
-  const maskLeft = el('div');
-  maskLeft.append(
-    el('div', 'options-row-label', '打开时默认遮罩 Cookie 值'),
-    el('div', 'options-row-sub', '防止录屏或截图时意外暴露登录凭证'),
-  );
-  const maskLabel = el('label', 'checkbox-label');
-  const maskCheck = el('input');
-  maskCheck.type = 'checkbox';
-  maskCheck.checked = settings.maskValuesByDefault;
-  maskCheck.addEventListener('change', async () => {
-    settings = { ...settings, maskValuesByDefault: maskCheck.checked };
-    await saveSettings(settings);
-  });
-  maskLabel.append(maskCheck, el('span', undefined, '启用'));
-  maskRow.append(maskLeft, maskLabel);
-
-  generalSection.append(themeRow, fontRow, exportRow, maskRow);
+  generalSection.append(themeRow, fontRow, advRow, maskRow, exportRow);
 
   // 2. Site Permissions Manager
   const permSection = el('section', 'options-section');
@@ -251,7 +272,8 @@ export async function mountOptionsApp(root: HTMLElement): Promise<void> {
     applyFontSize(next.fontSize);
     themeSelect.value = next.theme;
     exportSelect.value = next.defaultExportFormat;
-    maskCheck.checked = next.maskValuesByDefault;
+    advSwitch.input.checked = next.showAdvancedByDefault;
+    maskSwitch.input.checked = next.maskValuesByDefault;
     syncFontUi();
   });
 

@@ -12,6 +12,7 @@ export const DEFAULT_SETTINGS: ExtensionSettings = {
   theme: 'system',
   defaultExportFormat: 'json',
   maskValuesByDefault: false,
+  showAdvancedByDefault: false,
   fontSize: DEFAULT_FONT_SIZE,
 };
 
@@ -33,6 +34,7 @@ function parseSettingsObject(stored: unknown): ExtensionSettings {
         ? obj.defaultExportFormat
         : 'json',
     maskValuesByDefault: Boolean(obj.maskValuesByDefault),
+    showAdvancedByDefault: Boolean(obj.showAdvancedByDefault),
     fontSize: clampFontSize(obj.fontSize),
   };
 }
