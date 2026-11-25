@@ -209,7 +209,7 @@ export function createCookieRowController(
     // Name
     const nameField = el('div', 'field');
     nameField.appendChild(el('label', 'field-label', 'Name'));
-    const nameInput = el('input', 'input input-mono');
+    const nameInput = el('input', 'input');
     nameInput.type = 'text';
     nameInput.value = cookie.name;
     nameInput.required = true;
@@ -221,7 +221,7 @@ export function createCookieRowController(
     const valueLabelRow = el('div', 'field-label');
     valueLabelRow.appendChild(el('span', undefined, 'Value'));
 
-    const valueInput = el('textarea', 'textarea textarea-mono');
+    const valueInput = el('textarea', 'textarea');
     valueInput.rows = 3;
 
     const inspectorHost = el('div');
@@ -285,14 +285,14 @@ export function createCookieRowController(
 
     const domainField = el('div', 'field');
     domainField.appendChild(el('label', 'field-label', 'Domain'));
-    const domainInput = el('input', 'input input-mono');
+    const domainInput = el('input', 'input');
     domainInput.type = 'text';
     domainInput.value = cookie.domain;
     domainField.appendChild(domainInput);
 
     const pathField = el('div', 'field');
     pathField.appendChild(el('label', 'field-label', 'Path'));
-    const pathInput = el('input', 'input input-mono');
+    const pathInput = el('input', 'input');
     pathInput.type = 'text';
     pathInput.value = cookie.path;
     pathField.appendChild(pathInput);

@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "ClearCookie",
-  "version": "1.2.1",
+  "version": "1.2.2",
   "description": "本地无联网的 Cookie 编辑器，支持 Chrome 系与 Firefox。",
   "devtools_page": "devtools.html",
   "options_ui": {

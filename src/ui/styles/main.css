@@ -1,5 +1,5 @@
 :root {
-  --fs-base: 14px;
+  --fs-base: 13px;
 
   --surface-primary: #ffffff;
   --surface-secondary: #eceef1;
@@ -50,11 +50,9 @@
   --badge-purple-bg: #f3e8ff;
   --badge-purple-text: #6b21a8;
 
-  --font-sans: "Inter", "HarmonyOS Sans SC", "MiSans", "PingFang SC", "Segoe UI Variable Text",
-    "Segoe UI", "Hiragino Sans GB", "Noto Sans CJK SC", "Microsoft YaHei UI", "Microsoft YaHei",
-    system-ui, -apple-system, sans-serif;
-  --font-mono: "JetBrains Mono", "Cascadia Code", "SF Mono", "Fira Code", ui-monospace,
-    SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  --font-sans: 'Segoe UI', Tahoma, -apple-system, BlinkMacSystemFont, 'Microsoft YaHei UI',
+    'PingFang SC', 'Noto Sans CJK SC', sans-serif;
+  --font-mono: Consolas, Monaco, 'SF Mono', ui-monospace, monospace;
 }
 
 :root[data-font-size="12"] { --fs-base: 12px; }
@@ -141,11 +139,7 @@ body {
   font-family: var(--font-sans);
   font-size: 1rem;
   line-height: 1.45;
-  text-rendering: optimizeLegibility;
-  font-kerning: normal;
   font-variant-numeric: tabular-nums;
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
 }
 
 * {
@@ -646,9 +640,9 @@ body.surface-options {
 }
 
 .cookie-row-name {
-  font-family: var(--font-mono);
-  font-size: 0.92rem;
-  font-weight: 600;
+  font-family: var(--font-sans);
+  font-size: 0.96rem;
+  font-weight: 500;
   color: var(--text-primary);
   white-space: nowrap;
   overflow: hidden;
@@ -658,8 +652,9 @@ body.surface-options {
 }
 
 .cookie-row-extra {
-  font-family: var(--font-mono);
-  font-size: 0.8rem;
+  font-family: var(--font-sans);
+  font-size: 0.84rem;
+  font-weight: 400;
   color: var(--text-secondary);
   white-space: nowrap;
   overflow: hidden;
@@ -830,12 +825,6 @@ body.surface-options {
   background-color: var(--surface-secondary);
   color: var(--text-secondary);
   cursor: not-allowed;
-}
-
-.input-mono,
-.textarea-mono {
-  font-family: var(--font-mono);
-  font-size: 0.86rem;
 }
 
 .textarea {

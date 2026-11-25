@@ -6,7 +6,7 @@ const PROFILES_KEY = 'cc_profiles';
 
 export const MIN_FONT_SIZE = 12;
 export const MAX_FONT_SIZE = 18;
-export const DEFAULT_FONT_SIZE = 14;
+export const DEFAULT_FONT_SIZE = 13;
 
 export const DEFAULT_SETTINGS: ExtensionSettings = {
   theme: 'system',

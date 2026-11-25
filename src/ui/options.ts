@@ -100,9 +100,9 @@ export async function mountOptionsApp(root: HTMLElement): Promise<void> {
   const presetWrap = el('div', 'format-pills');
   const presetItems = [
     { size: 12, label: '紧凑' },
-    { size: 14, label: '标准' },
-    { size: 16, label: '舒适' },
-    { size: 18, label: '大号' },
+    { size: 13, label: '标准' },
+    { size: 15, label: '舒适' },
+    { size: 17, label: '大号' },
   ];
   const presetBtns: Array<{ size: number; btn: HTMLButtonElement }> = [];
 

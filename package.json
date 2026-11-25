@@ -1,6 +1,6 @@
 {
   "name": "clear-cookie",
-  "version": "1.2.1",
+  "version": "1.2.2",
   "private": true,
   "description": "Zero-dependency, offline-only Cookie editor extension for Chrome-based browsers and Firefox",
   "type": "module",

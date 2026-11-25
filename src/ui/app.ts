@@ -790,7 +790,7 @@ export async function mountCookieApp(root: HTMLElement, surface: AppSurface): Pr
 
       const nameField = el('div', 'field');
       nameField.appendChild(el('label', 'field-label', 'Name'));
-      const nameInput = el('input', 'input input-mono');
+      const nameInput = el('input', 'input');
       nameInput.type = 'text';
       nameInput.placeholder = 'session_id';
       nameInput.required = true;
@@ -798,7 +798,7 @@ export async function mountCookieApp(root: HTMLElement, surface: AppSurface): Pr
 
       const valueField = el('div', 'field');
       valueField.appendChild(el('label', 'field-label', 'Value'));
-      const valueInput = el('textarea', 'textarea textarea-mono');
+      const valueInput = el('textarea', 'textarea');
       valueInput.rows = 4;
       valueField.appendChild(valueInput);
 
@@ -821,14 +821,14 @@ export async function mountCookieApp(root: HTMLElement, surface: AppSurface): Pr
       const grid1 = el('div', 'form-grid-2');
       const domainField = el('div', 'field');
       domainField.appendChild(el('label', 'field-label', 'Domain'));
-      const domainInput = el('input', 'input input-mono');
+      const domainInput = el('input', 'input');
       domainInput.type = 'text';
       domainInput.value = ctx.hostname;
       domainField.appendChild(domainInput);
 
       const pathField = el('div', 'field');
       pathField.appendChild(el('label', 'field-label', 'Path'));
-      const pathInput = el('input', 'input input-mono');
+      const pathInput = el('input', 'input');
       pathInput.type = 'text';
       pathInput.value = '/';
       pathField.appendChild(pathInput);
