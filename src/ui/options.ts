@@ -4,8 +4,14 @@ import {
   requestAllSitesPermission,
   revokeOriginPermission,
 } from '../shared/permissions';
-import { loadSettings, saveSettings } from '../shared/storage';
-import { applyTheme } from '../shared/theme';
+import {
+  MAX_FONT_SIZE,
+  MIN_FONT_SIZE,
+  loadSettings,
+  onSettingsChanged,
+  saveSettings,
+} from '../shared/storage';
+import { applyFontSize, applyTheme } from '../shared/theme';
 import type { ExportFormat, ThemeMode } from '../shared/types';
 import { el } from './dom';
 import { createIcon } from './icons';
@@ -13,8 +19,9 @@ import { createIcon } from './icons';
 export async function mountOptionsApp(root: HTMLElement): Promise<void> {
   document.body.className = 'surface-options';
 
-  const settings = await loadSettings();
+  let settings = await loadSettings();
   applyTheme(settings.theme);
+  applyFontSize(settings.fontSize);
 
   const container = el('div', 'options-container');
 
@@ -44,11 +51,79 @@ export async function mountOptionsApp(root: HTMLElement): Promise<void> {
     themeSelect.appendChild(o);
   }
   themeSelect.addEventListener('change', async () => {
-    settings.theme = themeSelect.value as ThemeMode;
+    settings = { ...settings, theme: themeSelect.value as ThemeMode };
     applyTheme(settings.theme);
     await saveSettings(settings);
   });
   themeRow.append(themeLeft, themeSelect);
+
+  // Font Size Row
+  const fontRow = el('div', 'options-row');
+  const fontLeft = el('div');
+  fontLeft.append(
+    el('div', 'options-row-label', '字体大小'),
+    el('div', 'options-row-sub', `支持 ${MIN_FONT_SIZE}px – ${MAX_FONT_SIZE}px，实时同步到弹窗与侧边栏`),
+  );
+
+  const fontControl = el('div', 'options-font-control');
+  const fontStepper = el('div', 'font-stepper');
+
+  const minusBtn = el('button', 'icon-btn');
+  minusBtn.type = 'button';
+  minusBtn.title = '缩小字号';
+  minusBtn.setAttribute('aria-label', '缩小字号');
+  minusBtn.appendChild(createIcon('minus', 'icon-sm'));
+
+  const fontValueEl = el('span', 'font-value', `${settings.fontSize}px`);
+
+  const plusBtn = el('button', 'icon-btn');
+  plusBtn.type = 'button';
+  plusBtn.title = '增大字号';
+  plusBtn.setAttribute('aria-label', '增大字号');
+  plusBtn.appendChild(createIcon('plus', 'icon-sm'));
+
+  fontStepper.append(minusBtn, fontValueEl, plusBtn);
+
+  const presetWrap = el('div', 'font-presets');
+  const presetItems = [
+    { size: 12, label: '紧凑' },
+    { size: 14, label: '标准' },
+    { size: 16, label: '舒适' },
+    { size: 18, label: '大号' },
+  ];
+  const presetBtns: Array<{ size: number; btn: HTMLButtonElement }> = [];
+
+  const syncFontUi = () => {
+    fontValueEl.textContent = `${settings.fontSize}px`;
+    minusBtn.disabled = settings.fontSize <= MIN_FONT_SIZE;
+    plusBtn.disabled = settings.fontSize >= MAX_FONT_SIZE;
+    for (const p of presetBtns) {
+      p.btn.classList.toggle('active', settings.fontSize === p.size);
+    }
+  };
+
+  const updateFontSize = async (next: number) => {
+    const clamped = Math.min(MAX_FONT_SIZE, Math.max(MIN_FONT_SIZE, next));
+    settings = { ...settings, fontSize: clamped };
+    applyFontSize(clamped);
+    syncFontUi();
+    await saveSettings(settings);
+  };
+
+  minusBtn.addEventListener('click', () => void updateFontSize(settings.fontSize - 1));
+  plusBtn.addEventListener('click', () => void updateFontSize(settings.fontSize + 1));
+
+  for (const p of presetItems) {
+    const btn = el('button', 'filter-chip', p.label);
+    btn.type = 'button';
+    btn.addEventListener('click', () => void updateFontSize(p.size));
+    presetBtns.push({ size: p.size, btn });
+    presetWrap.appendChild(btn);
+  }
+  syncFontUi();
+
+  fontControl.append(fontStepper, presetWrap);
+  fontRow.append(fontLeft, fontControl);
 
   // Default Export Format Row
   const exportRow = el('div', 'options-row');
@@ -66,7 +141,7 @@ export async function mountOptionsApp(root: HTMLElement): Promise<void> {
     exportSelect.appendChild(o);
   }
   exportSelect.addEventListener('change', async () => {
-    settings.defaultExportFormat = exportSelect.value as ExportFormat;
+    settings = { ...settings, defaultExportFormat: exportSelect.value as ExportFormat };
     await saveSettings(settings);
   });
   exportRow.append(exportLeft, exportSelect);
@@ -83,13 +158,13 @@ export async function mountOptionsApp(root: HTMLElement): Promise<void> {
   maskCheck.type = 'checkbox';
   maskCheck.checked = settings.maskValuesByDefault;
   maskCheck.addEventListener('change', async () => {
-    settings.maskValuesByDefault = maskCheck.checked;
+    settings = { ...settings, maskValuesByDefault: maskCheck.checked };
     await saveSettings(settings);
   });
   maskLabel.append(maskCheck, el('span', undefined, '启用'));
   maskRow.append(maskLeft, maskLabel);
 
-  generalSection.append(themeRow, exportRow, maskRow);
+  generalSection.append(themeRow, fontRow, exportRow, maskRow);
 
   // 2. Site Permissions Manager
   const permSection = el('section', 'options-section');
@@ -169,6 +244,16 @@ export async function mountOptionsApp(root: HTMLElement): Promise<void> {
 
   container.append(header, generalSection, permSection, auditSection);
   root.replaceChildren(container);
+
+  onSettingsChanged((next) => {
+    settings = next;
+    applyTheme(next.theme);
+    applyFontSize(next.fontSize);
+    themeSelect.value = next.theme;
+    exportSelect.value = next.defaultExportFormat;
+    maskCheck.checked = next.maskValuesByDefault;
+    syncFontUi();
+  });
 
   await renderPermissionsList();
 }

@@ -4,15 +4,24 @@ import type { CookieItem, CookieProfile, ExtensionSettings } from './types';
 const SETTINGS_KEY = 'cc_settings';
 const PROFILES_KEY = 'cc_profiles';
 
+export const MIN_FONT_SIZE = 12;
+export const MAX_FONT_SIZE = 18;
+export const DEFAULT_FONT_SIZE = 14;
+
 export const DEFAULT_SETTINGS: ExtensionSettings = {
   theme: 'system',
   defaultExportFormat: 'json',
   maskValuesByDefault: false,
+  fontSize: DEFAULT_FONT_SIZE,
 };
 
-export async function loadSettings(): Promise<ExtensionSettings> {
-  const data = await ext.storageGet<Record<string, unknown>>(SETTINGS_KEY);
-  const stored = data[SETTINGS_KEY];
+export function clampFontSize(raw: unknown): number {
+  const num = typeof raw === 'number' ? Math.round(raw) : Number(raw);
+  if (!Number.isFinite(num)) return DEFAULT_FONT_SIZE;
+  return Math.min(MAX_FONT_SIZE, Math.max(MIN_FONT_SIZE, num));
+}
+
+function parseSettingsObject(stored: unknown): ExtensionSettings {
   if (!stored || typeof stored !== 'object') {
     return { ...DEFAULT_SETTINGS };
   }
@@ -24,11 +33,32 @@ export async function loadSettings(): Promise<ExtensionSettings> {
         ? obj.defaultExportFormat
         : 'json',
     maskValuesByDefault: Boolean(obj.maskValuesByDefault),
+    fontSize: clampFontSize(obj.fontSize),
   };
 }
 
+export async function loadSettings(): Promise<ExtensionSettings> {
+  const data = await ext.storageGet<Record<string, unknown>>(SETTINGS_KEY);
+  return parseSettingsObject(data[SETTINGS_KEY]);
+}
+
 export async function saveSettings(settings: ExtensionSettings): Promise<void> {
-  await ext.storageSet({ [SETTINGS_KEY]: settings });
+  await ext.storageSet({
+    [SETTINGS_KEY]: {
+      ...settings,
+      fontSize: clampFontSize(settings.fontSize),
+    },
+  });
+}
+
+export function onSettingsChanged(callback: (next: ExtensionSettings) => void): void {
+  ext.raw.storage.onChanged?.addListener((changes, areaName) => {
+    if (areaName !== 'local') return;
+    const entry = changes[SETTINGS_KEY];
+    if (entry && entry.newValue !== undefined) {
+      callback(parseSettingsObject(entry.newValue));
+    }
+  });
 }
 
 export async function loadProfilesForOrigin(origin: string): Promise<CookieProfile[]> {

@@ -84,6 +84,9 @@ interface WebExtensionNamespace {
       get: (keys?: string | string[] | Record<string, unknown>) => Promise<Record<string, unknown>>;
       set: (items: Record<string, unknown>) => Promise<void>;
     };
+    onChanged?: WebExtensionEvent<
+      (changes: Record<string, { oldValue?: unknown; newValue?: unknown }>, areaName: string) => void
+    >;
   };
   sidePanel?: {
     setPanelBehavior?: (options: { openPanelOnActionClick: boolean }) => Promise<void>;

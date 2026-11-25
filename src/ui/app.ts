@@ -14,12 +14,16 @@ import {
   requestPermissionForOrigin,
 } from '../shared/permissions';
 import {
+  MAX_FONT_SIZE,
+  MIN_FONT_SIZE,
   deleteProfile,
   loadProfilesForOrigin,
   loadSettings,
+  onSettingsChanged,
   saveProfile,
+  saveSettings,
 } from '../shared/storage';
-import { applyTheme } from '../shared/theme';
+import { applyFontSize, applyTheme } from '../shared/theme';
 import type {
   AppSurface,
   CookieDraft,
@@ -45,8 +49,9 @@ type ActiveModal = 'none' | 'add' | 'export' | 'import' | 'profiles' | 'clear';
 export async function mountCookieApp(root: HTMLElement, surface: AppSurface): Promise<void> {
   document.body.className = `surface-${surface}`;
 
-  const settings: ExtensionSettings = await loadSettings();
+  let settings: ExtensionSettings = await loadSettings();
   applyTheme(settings.theme);
+  applyFontSize(settings.fontSize);
 
   let ctx: TabContext = parseTabContext({});
   let hasPermission = false;
@@ -57,9 +62,10 @@ export async function mountCookieApp(root: HTMLElement, surface: AppSurface): Pr
   let masked = settings.maskValuesByDefault;
   let expandedKey: string | null = null;
   let activeModal: ActiveModal = 'none';
+  let fontBarOpen = false;
   let toastTimer: number | null = null;
 
-  // Persistent layout skeleton (so search input never loses focus on list re-renders)
+  // Persistent layout skeleton (keeps search input focused on re-renders)
   const shell = el('div', 'app-shell');
 
   // 1. Header
@@ -76,6 +82,12 @@ export async function mountCookieApp(root: HTMLElement, surface: AppSurface): Pr
   brandMeta.append(brandMark, hostInfo);
 
   const headerActions = el('div', 'header-actions');
+
+  const fontToggleBtn = el('button', 'icon-btn');
+  fontToggleBtn.type = 'button';
+  fontToggleBtn.title = '调整字号';
+  fontToggleBtn.setAttribute('aria-label', '调整字号');
+  fontToggleBtn.appendChild(createIcon('type'));
 
   const maskBtn = el('button', 'icon-btn');
   maskBtn.type = 'button';
@@ -121,8 +133,74 @@ export async function mountCookieApp(root: HTMLElement, surface: AppSurface): Pr
     void ext.openOptionsPage();
   });
 
-  headerActions.append(maskBtn, profilesBtn, refreshBtn, settingsBtn);
+  headerActions.append(fontToggleBtn, maskBtn, profilesBtn, refreshBtn, settingsBtn);
   header.append(brandMeta, headerActions);
+
+  // 1b. Quick Font Size Bar (collapsible)
+  const fontBar = el('div', 'font-bar');
+  fontBar.hidden = true;
+
+  const fontStepper = el('div', 'font-stepper');
+  const fontDownBtn = el('button', 'icon-btn');
+  fontDownBtn.type = 'button';
+  fontDownBtn.title = '缩小字号';
+  fontDownBtn.setAttribute('aria-label', '缩小字号');
+  fontDownBtn.appendChild(createIcon('minus', 'icon-sm'));
+
+  const fontValLabel = el('span', 'font-value', `${settings.fontSize}px`);
+
+  const fontUpBtn = el('button', 'icon-btn');
+  fontUpBtn.type = 'button';
+  fontUpBtn.title = '增大字号';
+  fontUpBtn.setAttribute('aria-label', '增大字号');
+  fontUpBtn.appendChild(createIcon('plus', 'icon-sm'));
+
+  fontStepper.append(fontDownBtn, fontValLabel, fontUpBtn);
+
+  const fontPresetsWrap = el('div', 'font-presets');
+  const presetDefs = [
+    { size: 12, label: '小' },
+    { size: 14, label: '标准' },
+    { size: 16, label: '大' },
+  ];
+  const presetButtons: Array<{ size: number; btn: HTMLButtonElement }> = [];
+
+  const updateFontControls = () => {
+    fontValLabel.textContent = `${settings.fontSize}px`;
+    fontDownBtn.disabled = settings.fontSize <= MIN_FONT_SIZE;
+    fontUpBtn.disabled = settings.fontSize >= MAX_FONT_SIZE;
+    for (const item of presetButtons) {
+      item.btn.classList.toggle('active', settings.fontSize === item.size);
+    }
+  };
+
+  const setFontSize = async (nextSize: number) => {
+    const clamped = Math.min(MAX_FONT_SIZE, Math.max(MIN_FONT_SIZE, nextSize));
+    settings = { ...settings, fontSize: clamped };
+    applyFontSize(clamped);
+    updateFontControls();
+    await saveSettings(settings);
+  };
+
+  fontDownBtn.addEventListener('click', () => void setFontSize(settings.fontSize - 1));
+  fontUpBtn.addEventListener('click', () => void setFontSize(settings.fontSize + 1));
+
+  for (const p of presetDefs) {
+    const btn = el('button', 'filter-chip', p.label);
+    btn.type = 'button';
+    btn.addEventListener('click', () => void setFontSize(p.size));
+    presetButtons.push({ size: p.size, btn });
+    fontPresetsWrap.appendChild(btn);
+  }
+  updateFontControls();
+
+  fontBar.append(el('span', 'font-bar-label', '字号'), fontStepper, fontPresetsWrap);
+
+  fontToggleBtn.addEventListener('click', () => {
+    fontBarOpen = !fontBarOpen;
+    fontBar.hidden = !fontBarOpen;
+    fontToggleBtn.classList.toggle('active', fontBarOpen);
+  });
 
   // 2. Search & Filter Toolbar
   const toolbar = el('div', 'toolbar');
@@ -186,29 +264,33 @@ export async function mountCookieApp(root: HTMLElement, surface: AppSurface): Pr
   // 3. Main Scroll Container
   const mainContent = el('main', 'main-content');
 
-  // 4. Bottom Action Bar
+  // 4. Bottom Action Bar (concise labels + wrapping layout so nothing ever clips)
   const bottomBar = el('footer', 'bottom-bar');
   const leftGroup = el('div', 'bottom-bar-group');
   const rightGroup = el('div', 'bottom-bar-group');
 
   const addBtn = el('button', 'btn btn-primary');
   addBtn.type = 'button';
-  addBtn.append(createIcon('plus', 'icon-sm'), el('span', undefined, '新建 Cookie'));
+  addBtn.title = '新建 Cookie';
+  addBtn.append(createIcon('plus', 'icon-sm'), el('span', undefined, '新建'));
   addBtn.addEventListener('click', () => openModal('add'));
 
   const importBtn = el('button', 'btn');
   importBtn.type = 'button';
+  importBtn.title = '导入 Cookie';
   importBtn.append(createIcon('upload', 'icon-sm'), el('span', undefined, '导入'));
   importBtn.addEventListener('click', () => openModal('import'));
 
   const exportBtn = el('button', 'btn');
   exportBtn.type = 'button';
+  exportBtn.title = '导出 Cookie';
   exportBtn.append(createIcon('download', 'icon-sm'), el('span', undefined, '导出'));
   exportBtn.addEventListener('click', () => openModal('export'));
 
   const clearBtn = el('button', 'btn btn-danger');
   clearBtn.type = 'button';
-  clearBtn.append(createIcon('trash', 'icon-sm'), el('span', undefined, '清空全部'));
+  clearBtn.title = '清空全部 Cookie';
+  clearBtn.append(createIcon('trash', 'icon-sm'), el('span', undefined, '清空'));
   clearBtn.addEventListener('click', () => openModal('clear'));
 
   leftGroup.append(addBtn, importBtn, exportBtn);
@@ -220,8 +302,16 @@ export async function mountCookieApp(root: HTMLElement, surface: AppSurface): Pr
   const toastEl = el('div', 'toast');
   toastEl.hidden = true;
 
-  shell.append(header, toolbar, mainContent, bottomBar, modalHost, toastEl);
+  shell.append(header, fontBar, toolbar, mainContent, bottomBar, modalHost, toastEl);
   root.replaceChildren(shell);
+
+  // Live sync settings changes from Options page or another open surface
+  onSettingsChanged((next) => {
+    settings = next;
+    applyTheme(next.theme);
+    applyFontSize(next.fontSize);
+    updateFontControls();
+  });
 
   function showToast(message: string, isError = false): void {
     toastEl.textContent = message;

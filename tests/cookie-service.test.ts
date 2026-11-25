@@ -5,6 +5,7 @@ import {
   sortCookies,
   validateCookieDraft,
 } from '../src/shared/cookie-service';
+import { clampFontSize, DEFAULT_FONT_SIZE, MAX_FONT_SIZE, MIN_FONT_SIZE } from '../src/shared/storage';
 import type { CookieDraft, CookieItem } from '../src/shared/types';
 
 function makeDraft(overrides: Partial<CookieDraft> = {}): CookieDraft {
@@ -75,5 +76,13 @@ describe('cookie-service pure helpers', () => {
       'a@z.com/',
       'b@a.com/',
     ]);
+  });
+
+  it('clamps font size safely within supported bounds', () => {
+    expect(clampFontSize(undefined)).toBe(DEFAULT_FONT_SIZE);
+    expect(clampFontSize('bad')).toBe(DEFAULT_FONT_SIZE);
+    expect(clampFontSize(8)).toBe(MIN_FONT_SIZE);
+    expect(clampFontSize(28)).toBe(MAX_FONT_SIZE);
+    expect(clampFontSize(15.6)).toBe(16);
   });
 });

@@ -88,29 +88,6 @@ export function renderCookieCard(
   const topLine = el('div', 'cookie-top-line');
   const nameNode = el('span', 'cookie-name', cookie.name);
   nameNode.title = cookie.name;
-  topLine.appendChild(nameNode);
-
-  const badges = el('div', 'badge-group');
-  if (cookie.httpOnly) badges.appendChild(el('span', 'badge badge-blue', 'HttpOnly'));
-  if (cookie.secure) badges.appendChild(el('span', 'badge badge-green', 'Secure'));
-  if (cookie.partitionKey?.topLevelSite) {
-    badges.appendChild(el('span', 'badge badge-purple', 'Partitioned'));
-  }
-  if (cookie.session) badges.appendChild(el('span', 'badge', 'Session'));
-  topLine.appendChild(badges);
-
-  const subLine = el('div', 'cookie-sub-line');
-  const valPreview = el(
-    'span',
-    masked ? 'cookie-value-preview masked' : 'cookie-value-preview',
-    masked ? '••••••••••••' : cookie.value || '(空值)',
-  );
-  if (!masked) valPreview.title = cookie.value;
-  const domainTag = el('span', 'cookie-domain-tag', cookie.domain);
-  domainTag.title = `${cookie.domain}${cookie.path}`;
-  subLine.append(valPreview, domainTag);
-
-  main.append(topLine, subLine);
 
   const quickActions = el('div', 'cookie-quick-actions');
 
@@ -136,7 +113,30 @@ export function renderCookieCard(
   });
 
   quickActions.append(copyBtn, delBtn);
-  summary.append(chevron, main, quickActions);
+  topLine.append(nameNode, quickActions);
+
+  const valPreview = el(
+    'div',
+    masked ? 'cookie-value-preview masked' : 'cookie-value-preview',
+    masked ? '••••••••••••' : cookie.value || '(空值)',
+  );
+  if (!masked) valPreview.title = cookie.value;
+
+  const summaryMetaRow = el('div', 'cookie-meta-row');
+  const domainLabel = cookie.path && cookie.path !== '/' ? `${cookie.domain}${cookie.path}` : cookie.domain;
+  const domainTag = el('span', 'cookie-domain-tag', domainLabel);
+  domainTag.title = `${cookie.domain}${cookie.path}`;
+  summaryMetaRow.appendChild(domainTag);
+
+  if (cookie.httpOnly) summaryMetaRow.appendChild(el('span', 'badge badge-blue', 'HttpOnly'));
+  if (cookie.secure) summaryMetaRow.appendChild(el('span', 'badge badge-green', 'Secure'));
+  if (cookie.partitionKey?.topLevelSite) {
+    summaryMetaRow.appendChild(el('span', 'badge badge-purple', 'Partitioned'));
+  }
+  if (cookie.session) summaryMetaRow.appendChild(el('span', 'badge', 'Session'));
+
+  main.append(topLine, valPreview, summaryMetaRow);
+  summary.append(chevron, main);
 
   summary.addEventListener('click', callbacks.onToggleExpand);
   summary.addEventListener('keydown', (e) => {

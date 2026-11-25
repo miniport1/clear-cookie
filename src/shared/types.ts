@@ -45,6 +45,7 @@ export interface ExtensionSettings {
   theme: ThemeMode;
   defaultExportFormat: ExportFormat;
   maskValuesByDefault: boolean;
+  fontSize: number;
 }
 
 export interface CookieProfile {

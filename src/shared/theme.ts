@@ -1,3 +1,4 @@
+import { clampFontSize } from './storage';
 import type { ThemeMode } from './types';
 
 let mediaQuery: MediaQueryList | null = null;
@@ -20,4 +21,8 @@ export function applyTheme(mode: ThemeMode): void {
       }
     });
   }
+}
+
+export function applyFontSize(size: number): void {
+  document.documentElement.dataset.fontSize = String(clampFontSize(size));
 }

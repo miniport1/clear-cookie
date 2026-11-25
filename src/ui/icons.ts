@@ -16,7 +16,9 @@ export type IconName =
   | 'x'
   | 'code'
   | 'check'
-  | 'file';
+  | 'file'
+  | 'type'
+  | 'minus';
 
 const SVG_NS = 'http://www.w3.org/2000/svg';
 
@@ -68,6 +70,8 @@ const ICON_PATHS: Record<IconName, string[]> = {
     'M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8Z',
     'M14 2v6h6',
   ],
+  type: ['M4 7V4h16v3', 'M9 20h6', 'M12 4v16'],
+  minus: ['M5 12h14'],
 };
 
 export function createIcon(name: IconName, className = 'icon'): SVGSVGElement {
