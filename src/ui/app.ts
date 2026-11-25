@@ -2,6 +2,8 @@ import { ext } from '../shared/browser-api';
 import {
   clearCookiesForTab,
   cookieIdentityKey,
+  cookieMatchesTab,
+  cookiesDiffer,
   deleteCookie,
   importCookiesForTab,
   listCookiesForTab,
@@ -43,7 +45,7 @@ import {
   epochToDateTimeLocal,
 } from './dom';
 import { createIcon, type IconName } from './icons';
-import { renderCookieRow } from './render-cookie-card';
+import { createCookieRowController, type CookieRowController } from './render-cookie-card';
 
 type FilterMode = 'all' | 'httpOnly' | 'secure' | 'session' | 'partitioned';
 type ActiveView = 'list' | 'add' | 'import' | 'profiles' | 'clear';
@@ -71,15 +73,21 @@ export async function mountCookieApp(root: HTMLElement, surface: AppSurface): Pr
   let filterMode: FilterMode = 'all';
   let masked = settings.maskValuesByDefault;
   let expandedKey: string | null = null;
-  let justSavedKey: string | null = null;
   let activeView: ActiveView = 'list';
   let menuOpen = false;
   let exportMenuOpen = false;
   let toastTimer: number | null = null;
+  let liveSyncTimer: number | null = null;
+
+  // Track keys the user just saved so they flash green instead of yellow
+  const recentlySavedKeys = new Set<string>();
+  // Persistent DOM row controllers keyed by cookieIdentityKey for in-place live diffing
+  const rowControllers = new Map<string, CookieRowController>();
+  let renderedOrigin = '';
 
   const shell = el('div', 'app-shell');
 
-  // ==================== 1. Top Title Bar (Cookie-Editor style) ====================
+  // ==================== 1. Top Title Bar ====================
   const titleBar = el('header', 'page-title');
   const titleLeft = el('div', 'title-left');
   const heading = el('h1', 'page-heading', 'ClearCookie');
@@ -97,7 +105,10 @@ export async function mountCookieApp(root: HTMLElement, surface: AppSurface): Pr
   refreshBtn.appendChild(createIcon('refresh', 'icon-sm'));
   refreshBtn.addEventListener('click', () => {
     closePopovers();
-    void refreshCurrentTab();
+    refreshBtn.classList.remove('spinning');
+    void refreshBtn.offsetWidth;
+    refreshBtn.classList.add('spinning');
+    void refreshCurrentTab({ animateSameOrigin: true });
   });
 
   const menuBtn = el('button', 'round-icon-btn');
@@ -125,7 +136,9 @@ export async function mountCookieApp(root: HTMLElement, surface: AppSurface): Pr
   advSwitchInput.addEventListener('change', async () => {
     settings = { ...settings, showAdvancedByDefault: advSwitchInput.checked };
     await saveSettings(settings);
-    if (activeView === 'list') renderListContent();
+    for (const ctrl of rowControllers.values()) {
+      ctrl.setShowAdvancedDefault(settings.showAdvancedByDefault);
+    }
   });
 
   // Item 2: Mask sensitive values toggle
@@ -139,7 +152,9 @@ export async function mountCookieApp(root: HTMLElement, surface: AppSurface): Pr
   maskMenuLabel.appendChild(maskSwitchWrap);
   maskSwitchInput.addEventListener('change', () => {
     masked = maskSwitchInput.checked;
-    if (activeView === 'list') renderListContent();
+    for (const ctrl of rowControllers.values()) {
+      ctrl.setMasked(masked);
+    }
   });
 
   // Item 3: Font Size Stepper
@@ -226,7 +241,7 @@ export async function mountCookieApp(root: HTMLElement, surface: AppSurface): Pr
   // ==================== 2. Main Scroll Container ====================
   const mainContainer = el('main', 'main-container');
 
-  // Persistent List View container (so search input keeps focus while filtering)
+  // Persistent List View wrapper
   const listViewWrap = el('div');
 
   const searchBarWrap = el('div', 'search-bar-wrap');
@@ -249,7 +264,7 @@ export async function mountCookieApp(root: HTMLElement, surface: AppSurface): Pr
     searchQuery = searchInput.value;
     searchInput.classList.toggle('has-content', searchQuery.trim().length > 0);
     searchClearBtn.hidden = searchQuery.length === 0;
-    renderCookieItems();
+    applyFilterVisibility();
   });
 
   searchClearBtn.addEventListener('click', () => {
@@ -258,7 +273,7 @@ export async function mountCookieApp(root: HTMLElement, surface: AppSurface): Pr
     searchInput.classList.remove('has-content');
     searchClearBtn.hidden = true;
     searchInput.focus();
-    renderCookieItems();
+    applyFilterVisibility();
   });
 
   searchBarWrap.append(searchIcon, searchInput, searchClearBtn);
@@ -280,21 +295,24 @@ export async function mountCookieApp(root: HTMLElement, surface: AppSurface): Pr
       for (const [id, b] of filterButtons) {
         b.classList.toggle('active', id === filterMode);
       }
-      renderCookieItems();
+      applyFilterVisibility();
     });
     filterButtons.set(def.id, btn);
     filterStrip.appendChild(btn);
   }
 
-  const cookieListHost = el('div');
-  listViewWrap.append(searchBarWrap, filterStrip, cookieListHost);
+  const cookieListUl = el('ul', 'cookie-list');
+  const emptyStateHost = el('div');
+  emptyStateHost.hidden = true;
+
+  listViewWrap.append(searchBarWrap, filterStrip, cookieListUl, emptyStateHost);
 
   const subviewHost = el('div');
   subviewHost.hidden = true;
 
   mainContainer.append(listViewWrap, subviewHost);
 
-  // ==================== 3. Anchored Export Popover (Cookie-Editor style) ====================
+  // ==================== 3. Anchored Export Popover ====================
   const exportPopover = el('div', 'export-popover');
   exportPopover.hidden = true;
   exportPopover.appendChild(el('h3', 'export-popover-title', '导出为'));
@@ -329,8 +347,10 @@ export async function mountCookieApp(root: HTMLElement, surface: AppSurface): Pr
       const target = getFilteredCookies();
       const source = target.length > 0 ? target : cookies;
       const output = exportCookies(source, fmt.id);
-      const safeHost = (ctx.hostname || 'cookies').replace(/[^a-zA-Z0-9.-]/g, '_');
-      const filename = `${safeHost}-cookies-${fmt.id}.${fmt.ext}`;
+      const safeHost = ctx.hostname ? ctx.hostname.replace(/[^a-zA-Z0-9.-]/g, '_') : '';
+      const filename = safeHost
+        ? `${safeHost}-cookies-${fmt.id}.${fmt.ext}`
+        : `cookies-${fmt.id}.${fmt.ext}`;
       downloadTextFile(filename, output);
       closePopovers();
       showToast(`已下载 ${filename}`);
@@ -388,13 +408,15 @@ export async function mountCookieApp(root: HTMLElement, surface: AppSurface): Pr
   shell.append(titleBar, mainContainer, exportPopover, footerBar, toastWrap);
   root.replaceChildren(shell);
 
-  // Sync settings live across Popup, SidePanel, DevTools, Options
+  // Live settings sync across surfaces
   onSettingsChanged((next) => {
     settings = next;
     applyTheme(next.theme);
     applyFontSize(next.fontSize);
     syncMenuControls();
-    if (activeView === 'list') renderCookieItems();
+    for (const ctrl of rowControllers.values()) {
+      ctrl.setShowAdvancedDefault(next.showAdvancedByDefault);
+    }
   });
 
   function closePopovers(): void {
@@ -439,20 +461,65 @@ export async function mountCookieApp(root: HTMLElement, surface: AppSurface): Pr
     }, 2600);
   }
 
-  function getFilteredCookies(): CookieItem[] {
+  function matchesCurrentFilter(c: CookieItem): boolean {
+    if (filterMode === 'httpOnly' && !c.httpOnly) return false;
+    if (filterMode === 'secure' && !c.secure) return false;
+    if (filterMode === 'session' && !c.session) return false;
+    if (filterMode === 'partitioned' && !c.partitionKey?.topLevelSite) return false;
     const q = searchQuery.trim().toLowerCase();
-    return cookies.filter((c) => {
-      if (filterMode === 'httpOnly' && !c.httpOnly) return false;
-      if (filterMode === 'secure' && !c.secure) return false;
-      if (filterMode === 'session' && !c.session) return false;
-      if (filterMode === 'partitioned' && !c.partitionKey?.topLevelSite) return false;
-      if (!q) return true;
-      return (
-        c.name.toLowerCase().includes(q) ||
-        c.value.toLowerCase().includes(q) ||
-        c.domain.toLowerCase().includes(q)
-      );
-    });
+    if (!q) return true;
+    return (
+      c.name.toLowerCase().includes(q) ||
+      c.value.toLowerCase().includes(q) ||
+      c.domain.toLowerCase().includes(q)
+    );
+  }
+
+  function getFilteredCookies(): CookieItem[] {
+    return cookies.filter(matchesCurrentFilter);
+  }
+
+  function clearRowControllers(): void {
+    rowControllers.clear();
+    cookieListUl.replaceChildren();
+  }
+
+  function createControllerForCookie(cookie: CookieItem, key: string): CookieRowController {
+    return createCookieRowController(
+      cookie,
+      {
+        expanded: expandedKey === key,
+        masked,
+        showAdvancedDefault: settings.showAdvancedByDefault,
+      },
+      {
+        onToggleExpand: () => {
+          const prevKey = expandedKey;
+          expandedKey = prevKey === key ? null : key;
+          if (prevKey && prevKey !== key) {
+            rowControllers.get(prevKey)?.setExpanded(false);
+          }
+          rowControllers.get(key)?.setExpanded(expandedKey === key);
+        },
+        onSave: async (draft, prev) => {
+          const saved = await saveCookie(draft, ctx, prev);
+          const newKey = cookieIdentityKey(saved);
+          expandedKey = newKey;
+          recentlySavedKeys.add(newKey);
+          window.setTimeout(() => recentlySavedKeys.delete(newKey), 1500);
+          await reloadCookies({ animateChanges: true });
+          rowControllers.get(newKey)?.flash('saved');
+          showToast(`已保存 ${saved.name}`);
+        },
+        onDelete: async (target) => {
+          await deleteCookie(target, ctx.protocol);
+          if (expandedKey === key) expandedKey = null;
+          await reloadCookies({ animateChanges: true });
+          showToast(`已删除 ${target.name}`);
+        },
+        onToast: showToast,
+      },
+    );
   }
 
   function setView(view: ActiveView): void {
@@ -462,7 +529,8 @@ export async function mountCookieApp(root: HTMLElement, surface: AppSurface): Pr
       listViewWrap.hidden = false;
       subviewHost.hidden = true;
       subviewHost.replaceChildren();
-      renderListContent();
+      renderListChrome();
+      applyFilterVisibility();
     } else {
       listViewWrap.hidden = true;
       subviewHost.hidden = false;
@@ -470,8 +538,7 @@ export async function mountCookieApp(root: HTMLElement, surface: AppSurface): Pr
     }
   }
 
-  // ==================== List View Renderer ====================
-  function renderListContent(): void {
+  function renderListChrome(): void {
     const canOperate = ctx.isSupported && hasPermission;
     profilesMenuBtn.disabled = !canOperate;
 
@@ -480,6 +547,8 @@ export async function mountCookieApp(root: HTMLElement, surface: AppSurface): Pr
       countLabel.hidden = true;
       searchBarWrap.hidden = true;
       filterStrip.hidden = true;
+      cookieListUl.hidden = true;
+      emptyStateHost.hidden = false;
       setFooterActions([]);
 
       const box = el('div', 'center-state');
@@ -488,7 +557,7 @@ export async function mountCookieApp(root: HTMLElement, surface: AppSurface): Pr
         el('h2', 'state-title', '当前页面不支持 Cookie'),
         el('p', 'state-desc', '请切换到 http 或 https 网页后再查看。'),
       );
-      cookieListHost.replaceChildren(box);
+      emptyStateHost.replaceChildren(box);
       return;
     }
 
@@ -499,6 +568,8 @@ export async function mountCookieApp(root: HTMLElement, surface: AppSurface): Pr
       countLabel.hidden = true;
       searchBarWrap.hidden = true;
       filterStrip.hidden = true;
+      cookieListUl.hidden = true;
+      emptyStateHost.hidden = false;
       setFooterActions([]);
 
       const box = el('div', 'center-state');
@@ -510,7 +581,7 @@ export async function mountCookieApp(root: HTMLElement, surface: AppSurface): Pr
         const ok = await requestPermissionForOrigin(ctx.url);
         if (ok) {
           hasPermission = true;
-          await reloadCookies();
+          await reloadCookies({ animateChanges: false });
         }
       });
 
@@ -520,7 +591,7 @@ export async function mountCookieApp(root: HTMLElement, surface: AppSurface): Pr
         const ok = await requestAllSitesPermission();
         if (ok) {
           hasPermission = true;
-          await reloadCookies();
+          await reloadCookies({ animateChanges: false });
         }
       });
 
@@ -531,14 +602,13 @@ export async function mountCookieApp(root: HTMLElement, surface: AppSurface): Pr
         el('p', 'state-desc', '默认不请求全网权限。授权后才能读写此站点 Cookie，随时可在设置中收回。'),
         actions,
       );
-      cookieListHost.replaceChildren(box);
+      emptyStateHost.replaceChildren(box);
       return;
     }
 
     searchBarWrap.hidden = cookies.length === 0;
     filterStrip.hidden = cookies.length === 0;
 
-    // Show Partitioned filter pill only when partitioned cookies exist
     const partBtn = filterButtons.get('partitioned');
     if (partBtn) {
       const hasPartitioned = cookies.some((c) => Boolean(c.partitionKey?.topLevelSite));
@@ -549,8 +619,6 @@ export async function mountCookieApp(root: HTMLElement, surface: AppSurface): Pr
         partBtn.classList.remove('active');
       }
     }
-
-    renderCookieItems();
 
     setFooterActions([
       {
@@ -585,25 +653,42 @@ export async function mountCookieApp(root: HTMLElement, surface: AppSurface): Pr
     ]);
   }
 
-  function renderCookieItems(): void {
-    const filtered = getFilteredCookies();
-    countLabel.hidden = false;
-    countLabel.textContent =
-      filtered.length === cookies.length
-        ? `${cookies.length} 条`
-        : `${filtered.length}/${cookies.length}`;
+  function applyFilterVisibility(): void {
+    if (!ctx.isSupported || !hasPermission) return;
 
     if (cookies.length === 0) {
+      countLabel.hidden = false;
+      countLabel.textContent = '0 条';
+      cookieListUl.hidden = true;
+      emptyStateHost.hidden = false;
+
       const box = el('div', 'center-state');
       const addBtn = el('button', 'btn btn-primary', '新建 Cookie');
       addBtn.type = 'button';
       addBtn.addEventListener('click', () => setView('add'));
       box.append(el('h2', 'state-title', '此页面没有 Cookie'), addBtn);
-      cookieListHost.replaceChildren(box);
+      emptyStateHost.replaceChildren(box);
       return;
     }
 
-    if (filtered.length === 0) {
+    let visibleCount = 0;
+    for (const c of cookies) {
+      const key = cookieIdentityKey(c);
+      const ctrl = rowControllers.get(key);
+      if (!ctrl) continue;
+      const matches = matchesCurrentFilter(c);
+      ctrl.el.hidden = !matches;
+      if (matches) visibleCount++;
+    }
+
+    countLabel.hidden = false;
+    countLabel.textContent =
+      visibleCount === cookies.length ? `${cookies.length} 条` : `${visibleCount}/${cookies.length}`;
+
+    if (visibleCount === 0) {
+      cookieListUl.hidden = true;
+      emptyStateHost.hidden = false;
+
       const box = el('div', 'center-state');
       const resetBtn = el('button', 'btn', '清除筛选');
       resetBtn.type = 'button';
@@ -616,56 +701,86 @@ export async function mountCookieApp(root: HTMLElement, surface: AppSurface): Pr
         for (const [id, b] of filterButtons) {
           b.classList.toggle('active', id === 'all');
         }
-        renderCookieItems();
+        applyFilterVisibility();
       });
       box.append(el('h2', 'state-title', '没有匹配的 Cookie'), resetBtn);
-      cookieListHost.replaceChildren(box);
-      return;
+      emptyStateHost.replaceChildren(box);
+    } else {
+      cookieListUl.hidden = false;
+      emptyStateHost.hidden = true;
+      emptyStateHost.replaceChildren();
     }
-
-    const ul = el('ul', 'cookie-list');
-    for (const cookie of filtered) {
-      const key = cookieIdentityKey(cookie);
-      const li = renderCookieRow(
-        cookie,
-        {
-          expanded: expandedKey === key,
-          masked,
-          showAdvancedDefault: settings.showAdvancedByDefault,
-          justSaved: justSavedKey === key,
-        },
-        {
-          onToggleExpand: () => {
-            expandedKey = expandedKey === key ? null : key;
-            renderCookieItems();
-          },
-          onSave: async (draft, prev) => {
-            const saved = await saveCookie(draft, ctx, prev);
-            const newKey = cookieIdentityKey(saved);
-            expandedKey = newKey;
-            justSavedKey = newKey;
-            await reloadCookies();
-            showToast(`已保存 ${saved.name}`);
-            window.setTimeout(() => {
-              if (justSavedKey === newKey) justSavedKey = null;
-            }, 650);
-          },
-          onDelete: async (target) => {
-            await deleteCookie(target, ctx.protocol);
-            if (expandedKey === key) expandedKey = null;
-            await reloadCookies();
-            showToast(`已删除 ${target.name}`);
-          },
-          onToast: showToast,
-        },
-      );
-      ul.appendChild(li);
-    }
-
-    cookieListHost.replaceChildren(ul);
   }
 
-  // ==================== Subview Renderers (Add / Import / Profiles / Clear) ====================
+  // ==================== In-place Live Reconciliation (Cookie-Editor style) ====================
+  function reconcileCookies(nextList: CookieItem[], animateChanges: boolean): void {
+    const sameOrigin = renderedOrigin === ctx.origin && renderedOrigin !== '';
+    const shouldAnimate = animateChanges && sameOrigin;
+
+    if (!sameOrigin) {
+      clearRowControllers();
+      renderedOrigin = ctx.origin;
+    }
+
+    const nextKeys = new Set<string>();
+    for (const c of nextList) {
+      nextKeys.add(cookieIdentityKey(c));
+    }
+
+    // 1. Remove disappeared cookies smoothly
+    for (const [key, ctrl] of [...rowControllers.entries()]) {
+      if (!nextKeys.has(key)) {
+        rowControllers.delete(key);
+        if (expandedKey === key) expandedKey = null;
+        if (shouldAnimate) {
+          ctrl.removeAnimated();
+        } else {
+          ctrl.el.remove();
+        }
+      }
+    }
+
+    // 2. Insert new or update existing cookies in sorted order without resetting scroll/expando
+    let anchor: ChildNode | null = cookieListUl.firstChild;
+
+    for (const nextCookie of nextList) {
+      const key = cookieIdentityKey(nextCookie);
+      const existing = rowControllers.get(key);
+
+      if (existing) {
+        const prevCookie = existing.getCookie();
+        if (cookiesDiffer(prevCookie, nextCookie)) {
+          const flashKind = recentlySavedKeys.has(key)
+            ? 'saved'
+            : shouldAnimate
+              ? 'changed'
+              : undefined;
+          existing.updateCookie(nextCookie, flashKind);
+        }
+        // Keep DOM order aligned without moving untouched nodes
+        if (existing.el !== anchor) {
+          cookieListUl.insertBefore(existing.el, anchor);
+        } else {
+          anchor = anchor.nextSibling;
+        }
+      } else {
+        const ctrl = createControllerForCookie(nextCookie, key);
+        rowControllers.set(key, ctrl);
+        cookieListUl.insertBefore(ctrl.el, anchor);
+        if (shouldAnimate) {
+          ctrl.flash(recentlySavedKeys.has(key) ? 'saved' : 'added');
+        }
+      }
+    }
+
+    cookies = nextList;
+    if (activeView === 'list') {
+      renderListChrome();
+      applyFilterVisibility();
+    }
+  }
+
+  // ==================== Subview Renderers ====================
   function renderSubview(view: Exclude<ActiveView, 'list'>): void {
     subviewHost.replaceChildren();
 
@@ -788,10 +903,13 @@ export async function mountCookieApp(root: HTMLElement, surface: AppSurface): Pr
         };
         try {
           const saved = await saveCookie(draft, ctx);
-          expandedKey = cookieIdentityKey(saved);
-          justSavedKey = expandedKey;
-          await reloadCookies();
+          const newKey = cookieIdentityKey(saved);
+          expandedKey = newKey;
+          recentlySavedKeys.add(newKey);
+          window.setTimeout(() => recentlySavedKeys.delete(newKey), 1500);
+          await reloadCookies({ animateChanges: true });
           setView('list');
+          rowControllers.get(newKey)?.flash('saved');
           showToast(`已新建 ${saved.name}`);
         } catch (err) {
           errorBox.textContent = err instanceof Error ? err.message : '保存失败';
@@ -873,7 +991,7 @@ export async function mountCookieApp(root: HTMLElement, surface: AppSurface): Pr
             const first = res.failed[0];
             throw new Error(`${first?.name ?? 'Cookie'}: ${first?.reason ?? '写入失败'}`);
           }
-          await reloadCookies();
+          await reloadCookies({ animateChanges: true });
           setView('list');
           const msg =
             res.failed.length > 0
@@ -951,7 +1069,7 @@ export async function mountCookieApp(root: HTMLElement, surface: AppSurface): Pr
               storeId: ctx.cookieStoreId,
             }));
             const res = await importCookiesForTab(drafts, ctx);
-            await reloadCookies();
+            await reloadCookies({ animateChanges: true });
             setView('list');
             showToast(`已应用「${p.name}」(${res.imported} 条)`);
           });
@@ -998,7 +1116,7 @@ export async function mountCookieApp(root: HTMLElement, surface: AppSurface): Pr
           variant: 'danger-solid',
           onClick: async () => {
             const removed = await clearCookiesForTab(ctx);
-            await reloadCookies();
+            await reloadCookies({ animateChanges: true });
             setView('list');
             showToast(`已清空 ${removed} 条 Cookie`);
           },
@@ -1007,20 +1125,32 @@ export async function mountCookieApp(root: HTMLElement, surface: AppSurface): Pr
     }
   }
 
-  // ==================== Data & Tab Lifecycle ====================
-  async function reloadCookies(): Promise<void> {
+  // ==================== Data & Real-time Cookie Change Sync ====================
+  async function reloadCookies(opts: { animateChanges: boolean } = { animateChanges: false }): Promise<void> {
     if (!ctx.isSupported || !hasPermission) {
       cookies = [];
-      if (activeView === 'list') renderListContent();
+      clearRowControllers();
+      renderedOrigin = '';
+      if (activeView === 'list') renderListChrome();
       return;
     }
     try {
-      cookies = await listCookiesForTab(ctx);
+      const nextList = await listCookiesForTab(ctx);
+      reconcileCookies(nextList, opts.animateChanges);
     } catch {
       cookies = [];
+      clearRowControllers();
+      if (activeView === 'list') renderListChrome();
       showToast('读取 Cookie 失败', true);
     }
-    if (activeView === 'list') renderListContent();
+  }
+
+  function scheduleLiveCookieSync(): void {
+    if (liveSyncTimer !== null) window.clearTimeout(liveSyncTimer);
+    liveSyncTimer = window.setTimeout(() => {
+      liveSyncTimer = null;
+      void reloadCookies({ animateChanges: true });
+    }, 60);
   }
 
   async function resolveCurrentTab(): Promise<TabContext> {
@@ -1033,34 +1163,45 @@ export async function mountCookieApp(root: HTMLElement, surface: AppSurface): Pr
     return parseTabContext(tab ?? {});
   }
 
-  async function refreshCurrentTab(): Promise<void> {
-    ctx = await resolveCurrentTab();
-    expandedKey = null;
+  async function refreshCurrentTab(opts: { animateSameOrigin?: boolean } = {}): Promise<void> {
+    const prevOrigin = ctx.origin;
+    const nextCtx = await resolveCurrentTab();
+    const sameOrigin = Boolean(prevOrigin && prevOrigin === nextCtx.origin);
+
+    ctx = nextCtx;
     hasPermission = ctx.isSupported ? await hasPermissionForUrl(ctx.url) : false;
-    activeView = 'list';
-    listViewWrap.hidden = false;
-    subviewHost.hidden = true;
-    subviewHost.replaceChildren();
-    await reloadCookies();
+
+    if (!sameOrigin) {
+      expandedKey = null;
+      activeView = 'list';
+      listViewWrap.hidden = false;
+      subviewHost.hidden = true;
+      subviewHost.replaceChildren();
+    }
+
+    await reloadCookies({ animateChanges: Boolean(opts.animateSameOrigin && sameOrigin) });
   }
 
-  if (surface === 'sidepanel') {
+  // Live cookies.onChanged listener across ALL surfaces (Popup, SidePanel, DevTools)
+  ext.raw.cookies.onChanged?.addListener((changeInfo) => {
+    if (changeInfo.cause === 'overwrite') return;
+    if (!hasPermission || !cookieMatchesTab(changeInfo.cookie, ctx)) return;
+    scheduleLiveCookieSync();
+  });
+
+  // Tab navigation & reload listeners
+  ext.raw.tabs.onUpdated.addListener((tabId, changeInfo) => {
+    if (tabId === ctx.tabId && (changeInfo.url || changeInfo.status === 'complete')) {
+      void refreshCurrentTab({ animateSameOrigin: true });
+    }
+  });
+
+  if (surface === 'sidepanel' || surface === 'popup') {
     ext.raw.tabs.onActivated.addListener(() => {
       closePopovers();
-      void refreshCurrentTab();
-    });
-    ext.raw.tabs.onUpdated.addListener((tabId, changeInfo) => {
-      if (tabId === ctx.tabId && (changeInfo.url || changeInfo.status === 'complete')) {
-        void refreshCurrentTab();
-      }
-    });
-  } else if (surface === 'devtools') {
-    ext.raw.tabs.onUpdated.addListener((tabId, changeInfo) => {
-      if (tabId === ctx.tabId && (changeInfo.url || changeInfo.status === 'complete')) {
-        void refreshCurrentTab();
-      }
+      void refreshCurrentTab({ animateSameOrigin: false });
     });
   }
 
-  await refreshCurrentTab();
+  await refreshCurrentTab({ animateSameOrigin: false });
 }

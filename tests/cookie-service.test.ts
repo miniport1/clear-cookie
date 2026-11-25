@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import {
   buildCookieUrl,
+  cookieMatchesTab,
+  cookiesDiffer,
   parseTabContext,
   sortCookies,
   validateCookieDraft,
@@ -84,5 +86,32 @@ describe('cookie-service pure helpers', () => {
     expect(clampFontSize(8)).toBe(MIN_FONT_SIZE);
     expect(clampFontSize(28)).toBe(MAX_FONT_SIZE);
     expect(clampFontSize(15.6)).toBe(16);
+  });
+
+  it('matches cookies to active tab hostname and container storeId accurately', () => {
+    const tab = parseTabContext({ id: 1, url: 'https://gist.github.com/u', cookieStoreId: 'firefox-container-1' });
+    const parentCookie: CookieItem = {
+      ...makeDraft({ domain: '.github.com', hostOnly: false }),
+      storeId: 'firefox-container-1',
+    };
+    const exactHostCookie: CookieItem = {
+      ...makeDraft({ domain: 'github.com', hostOnly: true }),
+      storeId: 'firefox-container-1',
+    };
+    const otherContainerCookie: CookieItem = {
+      ...makeDraft({ domain: '.github.com', hostOnly: false }),
+      storeId: 'firefox-container-2',
+    };
+    expect(cookieMatchesTab(parentCookie, tab)).toBe(true);
+    expect(cookieMatchesTab(exactHostCookie, tab)).toBe(false);
+    expect(cookieMatchesTab(otherContainerCookie, tab)).toBe(false);
+  });
+
+  it('detects differences between two cookie snapshots', () => {
+    const a: CookieItem = { ...makeDraft({ value: 'v1' }) };
+    const b: CookieItem = { ...makeDraft({ value: 'v1' }) };
+    const c: CookieItem = { ...makeDraft({ value: 'v2' }) };
+    expect(cookiesDiffer(a, b)).toBe(false);
+    expect(cookiesDiffer(a, c)).toBe(true);
   });
 });

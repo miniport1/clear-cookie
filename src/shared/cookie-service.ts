@@ -53,6 +53,34 @@ export function cookieIdentityKey(
   return [cookie.name, cookie.domain, cookie.path, cookie.storeId ?? '', topLevel].join('\u0000');
 }
 
+export function cookieMatchesTab(cookie: CookieItem, ctx: TabContext): boolean {
+  if (!ctx.isSupported || !ctx.hostname) return false;
+  if (ctx.cookieStoreId && cookie.storeId && cookie.storeId !== ctx.cookieStoreId) {
+    return false;
+  }
+  const host = ctx.hostname.toLowerCase();
+  const cleanDomain = cookie.domain.replace(/^\.+/, '').toLowerCase();
+  if (!cleanDomain) return false;
+  if (cookie.hostOnly) {
+    return host === cleanDomain;
+  }
+  return host === cleanDomain || host.endsWith(`.${cleanDomain}`);
+}
+
+export function cookiesDiffer(a: CookieItem, b: CookieItem): boolean {
+  return (
+    a.value !== b.value ||
+    a.domain !== b.domain ||
+    a.path !== b.path ||
+    a.hostOnly !== b.hostOnly ||
+    a.httpOnly !== b.httpOnly ||
+    a.secure !== b.secure ||
+    a.session !== b.session ||
+    a.sameSite !== b.sameSite ||
+    a.expirationDate !== b.expirationDate
+  );
+}
+
 export function validateCookieDraft(draft: CookieDraft): string | null {
   if (!draft.name.trim()) {
     return 'Cookie 名称不能为空';

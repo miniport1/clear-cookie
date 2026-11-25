@@ -71,7 +71,9 @@ interface WebExtensionNamespace {
     getAll: (details: RawCookieGetAllDetails) => Promise<CookieItem[]>;
     set: (details: RawCookieSetDetails) => Promise<CookieItem | null>;
     remove: (details: RawCookieRemoveDetails) => Promise<unknown>;
-    onChanged?: WebExtensionEvent<(changeInfo: { removed: boolean; cookie: CookieItem }) => void>;
+    onChanged?: WebExtensionEvent<
+      (changeInfo: { removed: boolean; cause?: string; cookie: CookieItem }) => void
+    >;
   };
   permissions: {
     contains: (perms: RawPermissions) => Promise<boolean>;

@@ -25,7 +25,9 @@
   --danger-surface: rgba(207, 0, 15, 0.11);
   --safe: #1e824c;
   --safe-surface: rgba(30, 130, 76, 0.12);
-  --flash-success: rgba(30, 130, 76, 0.22);
+  --flash-success: #9ee7a8;
+  --flash-changed: #fdfb8e;
+  --flash-added: #cfe8ff;
 
   --menu-surface: #ffffff;
   --menu-hover: #f0f2f5;
@@ -90,7 +92,9 @@
   --danger-surface: rgba(247, 19, 35, 0.22);
   --safe: #1db464;
   --safe-surface: rgba(29, 180, 100, 0.2);
-  --flash-success: rgba(29, 180, 100, 0.28);
+  --flash-success: #1b5e36;
+  --flash-changed: #595524;
+  --flash-added: #1d4466;
 
   --menu-surface: #3b3e45;
   --menu-hover: #31343a;
@@ -118,6 +122,10 @@
 *::before,
 *::after {
   box-sizing: border-box;
+}
+
+[hidden] {
+  display: none !important;
 }
 
 html {
@@ -551,34 +559,73 @@ body.surface-options {
 .cookie-item {
   border-bottom: 1px solid var(--border-primary);
   background-color: var(--surface-primary);
+  transition: opacity 220ms ease, max-height 220ms ease;
 }
 
-.cookie-item.anim-saved {
-  animation: saved-flash 550ms ease;
-}
-
-@keyframes saved-flash {
-  0% { background-color: var(--surface-primary); }
-  45% { background-color: var(--flash-success); }
-  100% { background-color: var(--surface-primary); }
+.cookie-item.anim-removing {
+  opacity: 0;
+  pointer-events: none;
 }
 
 .cookie-row {
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 0.6rem 0.75rem;
+  padding: 0.6rem 0.9rem;
   min-height: 2.5rem;
   position: relative;
   cursor: pointer;
   user-select: none;
   background-color: var(--surface-primary);
-  transition: background-color 100ms ease;
+  transition: background-color 120ms ease;
   min-width: 0;
 }
 
 .cookie-row:hover {
   background-color: var(--surface-hover);
+}
+
+.cookie-row.anim-saved {
+  animation: flash-saved 650ms ease;
+}
+
+.cookie-row.anim-value-changed,
+.input.anim-value-changed,
+.textarea.anim-value-changed,
+.select.anim-value-changed,
+.checkbox-item.anim-value-changed {
+  animation: flash-changed 750ms ease;
+}
+
+.cookie-row.anim-added {
+  animation: flash-added 800ms ease;
+}
+
+@keyframes flash-saved {
+  0% { background-color: var(--surface-primary); }
+  35% { background-color: var(--flash-success); }
+  100% { background-color: var(--surface-primary); }
+}
+
+@keyframes flash-changed {
+  0% { background-color: var(--surface-primary); }
+  30% { background-color: var(--flash-changed); }
+  100% { background-color: var(--surface-primary); }
+}
+
+@keyframes flash-added {
+  0% { background-color: var(--flash-added); }
+  60% { background-color: var(--flash-changed); }
+  100% { background-color: var(--surface-primary); }
+}
+
+.round-icon-btn.spinning .icon-sm {
+  animation: spin-once 420ms ease;
+}
+
+@keyframes spin-once {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
 }
 
 .cookie-row:focus-visible {
