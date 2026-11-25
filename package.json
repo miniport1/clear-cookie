@@ -1,0 +1,25 @@
+{
+  "name": "clear-cookie",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Zero-dependency, offline-only Cookie editor extension for Chrome-based browsers and Firefox",
+  "type": "module",
+  "scripts": {
+    "dev:chrome": "vite build --watch --mode chrome",
+    "dev:firefox": "vite build --watch --mode firefox",
+    "build:icons": "node scripts/generate-icons.mjs",
+    "build": "node scripts/build.mjs",
+    "build:chrome": "node scripts/build.mjs chrome",
+    "build:firefox": "node scripts/build.mjs firefox",
+    "pack": "node scripts/pack.mjs",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "typescript": "^5.7.2",
+    "vite": "^6.0.7",
+    "vitest": "^3.0.4"
+  }
+}
